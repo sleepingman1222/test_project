@@ -433,6 +433,58 @@ h1 em {
   margin: 0;
 }
 
+.admin-card {
+  padding: 12px;
+  overflow: hidden;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+th,
+td {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+th {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+tbody tr:hover {
+  background: rgba(88, 116, 98, 0.04);
+}
+
+.role-badge {
+  display: inline-block;
+  padding: 4px 9px;
+  color: var(--muted);
+  background: #f0ede7;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.role-admin {
+  color: var(--primary-dark);
+  background: #dfeae1;
+}
+
 footer {
   padding: 22px;
   color: #99938a;

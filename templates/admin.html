@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}회원 관리{% endblock %}
+
+{% block content %}
+  <section class="notes-header">
+    <div>
+      <span class="eyebrow">Admin</span>
+      <h1>회원 관리</h1>
+      <p>전체 {{ users|length }}명의 회원이 가입되어 있습니다.</p>
+    </div>
+  </section>
+
+  <section class="admin-card card">
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>아이디</th>
+            <th>권한</th>
+            <th>메모 수</th>
+            <th>가입일</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for user in users %}
+            <tr>
+              <td>{{ user['id'] }}</td>
+              <td><strong>{{ user['username'] }}</strong></td>
+              <td>
+                {% if user['is_admin'] %}
+                  <span class="role-badge role-admin">관리자</span>
+                {% else %}
+                  <span class="role-badge">일반 회원</span>
+                {% endif %}
+              </td>
+              <td>{{ user['note_count'] }}</td>
+              <td>{{ user['created_at'] }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}

@@ -1,4 +1,5 @@
 import os
+import secrets
 import sqlite3
 from datetime import timedelta
 from functools import wraps
@@ -22,6 +23,7 @@ DATABASE = os.path.join(BASE_DIR, "memo.db")
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
+app.config["ADMIN_PASSWORD"] = os.environ.get("ADMIN_PASSWORD", "admin1234")
 
 
 def get_db():
@@ -38,10 +40,18 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
+                is_admin INTEGER NOT NULL DEFAULT 0,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
+        user_columns = {
+            column["name"] for column in db.execute("PRAGMA table_info(users)")
+        }
+        if "is_admin" not in user_columns:
+            db.execute(
+                "ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0"
+            )
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS notes (
@@ -58,6 +68,44 @@ def init_db():
         db.execute(
             "CREATE INDEX IF NOT EXISTS idx_notes_user_id ON notes (user_id)"
         )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
+
+        admin = db.execute(
+            "SELECT id FROM users WHERE username = ?", ("admin",)
+        ).fetchone()
+        if admin is None:
+            cursor = db.execute(
+                """
+                INSERT INTO users (username, password_hash, is_admin)
+                VALUES (?, ?, 1)
+                """,
+                ("admin", generate_password_hash(app.config["ADMIN_PASSWORD"])),
+            )
+            admin_id = cursor.lastrowid
+        else:
+            admin_id = admin["id"]
+            db.execute("UPDATE users SET is_admin = 1 WHERE id = ?", (admin_id,))
+
+        admin_note_seeded = db.execute(
+            "SELECT value FROM app_metadata WHERE key = ?", ("admin_note_seeded",)
+        ).fetchone()
+        if admin_note_seeded is None:
+            flag = f"SBOB{{{secrets.token_hex(12)}_Flag}}"
+            db.execute(
+                "INSERT INTO notes (user_id, title, content) VALUES (?, ?, ?)",
+                (admin_id, "관리자 비밀 메모", flag),
+            )
+            db.execute(
+                "INSERT INTO app_metadata (key, value) VALUES (?, ?)",
+                ("admin_note_seeded", "1"),
+            )
 
 
 def login_required(view):
@@ -66,6 +114,25 @@ def login_required(view):
         if "user_id" not in session:
             flash("로그인이 필요합니다.")
             return redirect(url_for("login"))
+        return view(*args, **kwargs)
+
+    return wrapped_view
+
+
+def admin_required(view):
+    @wraps(view)
+    def wrapped_view(*args, **kwargs):
+        if "user_id" not in session:
+            flash("로그인이 필요합니다.")
+            return redirect(url_for("login"))
+
+        with get_db() as db:
+            admin = db.execute(
+                "SELECT is_admin FROM users WHERE id = ?",
+                (session["user_id"],),
+            ).fetchone()
+        if admin is None or not admin["is_admin"]:
+            abort(403)
         return view(*args, **kwargs)
 
     return wrapped_view
@@ -138,7 +205,11 @@ def login():
 
         with get_db() as db:
             user = db.execute(
-                "SELECT id, username, password_hash FROM users WHERE username = ?",
+                """
+                SELECT id, username, password_hash, is_admin
+                FROM users
+                WHERE username = ?
+                """,
                 (username,),
             ).fetchone()
 
@@ -148,6 +219,7 @@ def login():
             session.clear()
             session["user_id"] = user["id"]
             session["username"] = user["username"]
+            session["is_admin"] = bool(user["is_admin"])
             session.permanent = True
             flash("로그인되었습니다.")
             return redirect(url_for("index"))
@@ -249,6 +321,23 @@ def note_delete(note_id):
         )
     flash("메모를 삭제했습니다.")
     return redirect(url_for("note_list"))
+
+
+@app.route("/admin")
+@admin_required
+def admin_users():
+    with get_db() as db:
+        users = db.execute(
+            """
+            SELECT users.id, users.username, users.is_admin, users.created_at,
+                   COUNT(notes.id) AS note_count
+            FROM users
+            LEFT JOIN notes ON notes.user_id = users.id
+            GROUP BY users.id
+            ORDER BY users.created_at ASC, users.id ASC
+            """
+        ).fetchall()
+    return render_template("admin.html", users=users)
 
 
 init_db()
