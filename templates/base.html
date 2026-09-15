@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %} - 하루메모</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <div class="nav-wrap">
+      <a class="brand" href="{{ url_for('index') }}">
+        <span class="brand-mark">M</span>
+        <span>하루메모</span>
+      </a>
+      <nav aria-label="주요 메뉴">
+        {% if session.get('user_id') %}
+          <span class="user-name">{{ session.get('username') }}님</span>
+          <a class="nav-link" href="{{ url_for('logout') }}">로그아웃</a>
+        {% else %}
+          <a class="nav-link" href="{{ url_for('login') }}">로그인</a>
+          <a class="button button-small" href="{{ url_for('register') }}">시작하기</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+
+  <main class="page-wrap">
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="flash-list" aria-live="polite">
+          {% for message in messages %}
+            <div class="flash-message">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer>© 하루메모 · 오늘의 생각을 가볍게 기록하세요.</footer>
+</body>
+</html>

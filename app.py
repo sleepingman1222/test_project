@@ -7,7 +7,7 @@ from flask import (
     Flask,
     flash,
     redirect,
-    render_template_string,
+    render_template,
     request,
     session,
     url_for,
@@ -21,46 +21,6 @@ DATABASE = os.path.join(BASE_DIR, "memo.db")
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
-
-
-PAGE_TEMPLATE = """
-<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ title }} - 메모 서비스</title>
-</head>
-<body>
-  <header>
-    <h1><a href="{{ url_for('index') }}">메모 서비스</a></h1>
-    <nav>
-      {% if session.get('user_id') %}
-        <span>{{ session.get('username') }}님</span>
-        <a href="{{ url_for('logout') }}">로그아웃</a>
-      {% else %}
-        <a href="{{ url_for('login') }}">로그인</a>
-        <a href="{{ url_for('register') }}">회원가입</a>
-      {% endif %}
-    </nav>
-  </header>
-
-  {% with messages = get_flashed_messages() %}
-    {% if messages %}
-      <ul>
-        {% for message in messages %}
-          <li>{{ message }}</li>
-        {% endfor %}
-      </ul>
-    {% endif %}
-  {% endwith %}
-
-  <main>
-    {{ content | safe }}
-  </main>
-</body>
-</html>
-"""
 
 
 def get_db():
@@ -83,11 +43,6 @@ def init_db():
         )
 
 
-def render_page(title, content_template, **context):
-    content = render_template_string(content_template, **context)
-    return render_template_string(PAGE_TEMPLATE, title=title, content=content)
-
-
 def login_required(view):
     @wraps(view)
     def wrapped_view(*args, **kwargs):
@@ -102,18 +57,8 @@ def login_required(view):
 @app.route("/")
 def index():
     if "user_id" in session:
-        content = """
-        <h2>환영합니다, {{ username }}님!</h2>
-        <p>로그인 상태가 유지되고 있습니다.</p>
-        <p>메모 기능은 다음 단계에서 추가할 수 있습니다.</p>
-        """
-        return render_page("홈", content, username=session["username"])
-
-    content = """
-    <h2>간단한 메모 서비스</h2>
-    <p>서비스를 이용하려면 로그인하거나 회원가입해 주세요.</p>
-    """
-    return render_page("홈", content)
+        return render_template("index.html", username=session["username"])
+    return render_template("index.html")
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -146,26 +91,7 @@ def register():
             except sqlite3.IntegrityError:
                 flash("이미 사용 중인 아이디입니다.")
 
-    content = """
-    <h2>회원가입</h2>
-    <form method="post">
-      <p>
-        <label for="username">아이디</label><br>
-        <input id="username" name="username" type="text" minlength="3"
-               maxlength="30" value="{{ request.form.get('username', '') }}" required>
-      </p>
-      <p>
-        <label for="password">비밀번호</label><br>
-        <input id="password" name="password" type="password" minlength="8" required>
-      </p>
-      <p>
-        <label for="password_confirm">비밀번호 확인</label><br>
-        <input id="password_confirm" name="password_confirm" type="password" minlength="8" required>
-      </p>
-      <button type="submit">가입하기</button>
-    </form>
-    """
-    return render_page("회원가입", content)
+    return render_template("register.html")
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -193,22 +119,7 @@ def login():
             flash("로그인되었습니다.")
             return redirect(url_for("index"))
 
-    content = """
-    <h2>로그인</h2>
-    <form method="post">
-      <p>
-        <label for="username">아이디</label><br>
-        <input id="username" name="username" type="text"
-               value="{{ request.form.get('username', '') }}" required autofocus>
-      </p>
-      <p>
-        <label for="password">비밀번호</label><br>
-        <input id="password" name="password" type="password" required>
-      </p>
-      <button type="submit">로그인</button>
-    </form>
-    """
-    return render_page("로그인", content)
+    return render_template("login.html")
 
 
 @app.route("/logout")
