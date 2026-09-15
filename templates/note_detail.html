@@ -11,8 +11,8 @@
     </header>
     <div class="note-content">{{ note['content'] }}</div>
     <div class="detail-actions">
-      <a class="button button-secondary" href="{{ url_for('note_edit', note_id=note['id']) }}">수정</a>
-      <form method="post" action="{{ url_for('note_delete', note_id=note['id']) }}">
+      <a class="button button-secondary" href="{{ url_for('note_edit', public_id=note['public_id']) }}">수정</a>
+      <form method="post" action="{{ url_for('note_delete', public_id=note['public_id']) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="button button-danger" type="submit">삭제</button>
       </form>

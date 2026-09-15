@@ -15,7 +15,7 @@
   {% if notes %}
     <section class="notes-grid">
       {% for note in notes %}
-        <a class="note-card" href="{{ url_for('note_detail', note_id=note['id']) }}">
+        <a class="note-card" href="{{ url_for('note_detail', public_id=note['public_id']) }}">
           <h2>{{ note['title'] }}</h2>
           <p>{{ note['content']|truncate(120) }}</p>
           <time>수정 {{ note['updated_at'] }}</time>

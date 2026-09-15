@@ -83,6 +83,7 @@ def init_db():
             """
             CREATE TABLE IF NOT EXISTS notes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                public_id TEXT NOT NULL UNIQUE,
                 user_id INTEGER NOT NULL,
                 title TEXT NOT NULL,
                 content TEXT NOT NULL,
@@ -91,6 +92,22 @@ def init_db():
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
             )
             """
+        )
+        note_columns = {
+            column["name"] for column in db.execute("PRAGMA table_info(notes)")
+        }
+        if "public_id" not in note_columns:
+            db.execute("ALTER TABLE notes ADD COLUMN public_id TEXT")
+        notes_without_public_id = db.execute(
+            "SELECT id FROM notes WHERE public_id IS NULL OR public_id = ''"
+        ).fetchall()
+        for note in notes_without_public_id:
+            db.execute(
+                "UPDATE notes SET public_id = ? WHERE id = ?",
+                (secrets.token_urlsafe(18), note["id"]),
+            )
+        db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_public_id ON notes (public_id)"
         )
         db.execute(
             "CREATE INDEX IF NOT EXISTS idx_notes_user_id ON notes (user_id)"
@@ -141,8 +158,11 @@ def init_db():
         if admin_note_seeded is None:
             flag = f"SBOB{{{secrets.token_hex(12)}_Flag}}"
             db.execute(
-                "INSERT INTO notes (user_id, title, content) VALUES (?, ?, ?)",
-                (admin_id, "관리자 비밀 메모", flag),
+                """
+                INSERT INTO notes (public_id, user_id, title, content)
+                VALUES (?, ?, ?, ?)
+                """,
+                (secrets.token_urlsafe(18), admin_id, "관리자 비밀 메모", flag),
             )
             db.execute(
                 "INSERT INTO app_metadata (key, value) VALUES (?, ?)",
@@ -259,18 +279,23 @@ def admin_required(view):
     return wrapped_view
 
 
-def get_owned_note(note_id):
+def get_owned_note(public_id):
     with get_db() as db:
         note = db.execute(
             """
-            SELECT id, title, content, created_at, updated_at
+            SELECT id, public_id, title, content, created_at, updated_at
             FROM notes
-            WHERE id = ? AND user_id = ?
+            WHERE public_id = ? AND user_id = ?
             """,
-            (note_id, session["user_id"]),
+            (public_id, session["user_id"]),
         ).fetchone()
 
     if note is None:
+        app.logger.warning(
+            "Note access denied or not found: user_id=%r remote_addr=%r",
+            session.get("user_id"),
+            request.remote_addr,
+        )
         abort(404)
     return note
 
@@ -391,7 +416,7 @@ def note_list():
     with get_db() as db:
         notes = db.execute(
             """
-            SELECT id, title, content, created_at, updated_at
+            SELECT public_id, title, content, created_at, updated_at
             FROM notes
             WHERE user_id = ?
             ORDER BY updated_at DESC, id DESC
@@ -416,27 +441,30 @@ def note_create():
             flash("내용은 20,000자 이하로 입력해 주세요.")
         else:
             with get_db() as db:
-                cursor = db.execute(
-                    "INSERT INTO notes (user_id, title, content) VALUES (?, ?, ?)",
-                    (session["user_id"], title, content),
+                public_id = secrets.token_urlsafe(18)
+                db.execute(
+                    """
+                    INSERT INTO notes (public_id, user_id, title, content)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (public_id, session["user_id"], title, content),
                 )
-                note_id = cursor.lastrowid
             flash("메모를 저장했습니다.")
-            return redirect(url_for("note_detail", note_id=note_id))
+            return redirect(url_for("note_detail", public_id=public_id))
 
     return render_template("note_form.html", note=None, page_title="새 메모")
 
 
-@app.route("/notes/<int:note_id>")
+@app.route("/notes/<string:public_id>")
 @login_required
-def note_detail(note_id):
-    return render_template("note_detail.html", note=get_owned_note(note_id))
+def note_detail(public_id):
+    return render_template("note_detail.html", note=get_owned_note(public_id))
 
 
-@app.route("/notes/<int:note_id>/edit", methods=["GET", "POST"])
+@app.route("/notes/<string:public_id>/edit", methods=["GET", "POST"])
 @login_required
-def note_edit(note_id):
-    note = get_owned_note(note_id)
+def note_edit(public_id):
+    note = get_owned_note(public_id)
 
     if request.method == "POST":
         title = request.form.get("title", "").strip()
@@ -454,24 +482,24 @@ def note_edit(note_id):
                     """
                     UPDATE notes
                     SET title = ?, content = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ? AND user_id = ?
+                    WHERE public_id = ? AND user_id = ?
                     """,
-                    (title, content, note_id, session["user_id"]),
+                    (title, content, public_id, session["user_id"]),
                 )
             flash("메모를 수정했습니다.")
-            return redirect(url_for("note_detail", note_id=note_id))
+            return redirect(url_for("note_detail", public_id=public_id))
 
     return render_template("note_form.html", note=note, page_title="메모 수정")
 
 
-@app.route("/notes/<int:note_id>/delete", methods=["POST"])
+@app.route("/notes/<string:public_id>/delete", methods=["POST"])
 @login_required
-def note_delete(note_id):
-    get_owned_note(note_id)
+def note_delete(public_id):
+    get_owned_note(public_id)
     with get_db() as db:
         db.execute(
-            "DELETE FROM notes WHERE id = ? AND user_id = ?",
-            (note_id, session["user_id"]),
+            "DELETE FROM notes WHERE public_id = ? AND user_id = ?",
+            (public_id, session["user_id"]),
         )
     flash("메모를 삭제했습니다.")
     return redirect(url_for("note_list"))

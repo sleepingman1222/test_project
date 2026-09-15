@@ -23,7 +23,7 @@
                   placeholder="떠오른 생각을 자유롭게 적어보세요." required>{{ request.form.get('content', note['content'] if note else '') }}</textarea>
       </div>
       <div class="form-actions">
-        <a class="button button-secondary" href="{{ url_for('note_detail', note_id=note['id']) if note else url_for('note_list') }}">취소</a>
+        <a class="button button-secondary" href="{{ url_for('note_detail', public_id=note['public_id']) if note else url_for('note_list') }}">취소</a>
         <button class="button" type="submit">저장하기</button>
       </div>
     </form>
