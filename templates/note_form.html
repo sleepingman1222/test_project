@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+  <section class="editor-card card">
+    <div class="section-heading">
+      <span class="eyebrow">Write it down</span>
+      <h1>{{ page_title }}</h1>
+    </div>
+
+    <form method="post">
+      <div class="field">
+        <label for="title">제목</label>
+        <input id="title" name="title" type="text" maxlength="100"
+               value="{{ request.form.get('title', note['title'] if note else '') }}"
+               placeholder="메모 제목" required autofocus>
+      </div>
+      <div class="field">
+        <label for="content">내용</label>
+        <textarea id="content" name="content" rows="12"
+                  placeholder="떠오른 생각을 자유롭게 적어보세요." required>{{ request.form.get('content', note['content'] if note else '') }}</textarea>
+      </div>
+      <div class="form-actions">
+        <a class="button button-secondary" href="{{ url_for('note_detail', note_id=note['id']) if note else url_for('note_list') }}">취소</a>
+        <button class="button" type="submit">저장하기</button>
+      </div>
+    </form>
+  </section>
+{% endblock %}

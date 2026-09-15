@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}내 메모{% endblock %}
+
+{% block content %}
+  <section class="notes-header">
+    <div>
+      <span class="eyebrow">My notes</span>
+      <h1>내 메모</h1>
+      <p>{{ notes|length }}개의 메모가 있습니다.</p>
+    </div>
+    <a class="button" href="{{ url_for('note_create') }}">+ 새 메모</a>
+  </section>
+
+  {% if notes %}
+    <section class="notes-grid">
+      {% for note in notes %}
+        <a class="note-card" href="{{ url_for('note_detail', note_id=note['id']) }}">
+          <h2>{{ note['title'] }}</h2>
+          <p>{{ note['content']|truncate(120) }}</p>
+          <time>수정 {{ note['updated_at'] }}</time>
+        </a>
+      {% endfor %}
+    </section>
+  {% else %}
+    <section class="empty-state card">
+      <span>✦</span>
+      <h2>아직 작성한 메모가 없어요.</h2>
+      <p>첫 번째 생각을 기록해 보세요.</p>
+      <a class="button" href="{{ url_for('note_create') }}">첫 메모 작성하기</a>
+    </section>
+  {% endif %}
+{% endblock %}

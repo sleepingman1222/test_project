@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}{{ note['title'] }}{% endblock %}
+
+{% block content %}
+  <article class="detail-card card">
+    <a class="back-link" href="{{ url_for('note_list') }}">← 목록으로</a>
+    <header class="note-heading">
+      <h1>{{ note['title'] }}</h1>
+      <time>작성 {{ note['created_at'] }} · 수정 {{ note['updated_at'] }}</time>
+    </header>
+    <div class="note-content">{{ note['content'] }}</div>
+    <div class="detail-actions">
+      <a class="button button-secondary" href="{{ url_for('note_edit', note_id=note['id']) }}">수정</a>
+      <form method="post" action="{{ url_for('note_delete', note_id=note['id']) }}">
+        <button class="button button-danger" type="submit">삭제</button>
+      </form>
+    </div>
+  </article>
+{% endblock %}
