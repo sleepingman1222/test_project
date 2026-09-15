@@ -11,6 +11,7 @@
     </div>
 
     <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field">
         <label for="username">아이디</label>
         <input id="username" name="username" type="text" minlength="3" maxlength="30"
@@ -19,12 +20,12 @@
       </div>
       <div class="field">
         <label for="password">비밀번호</label>
-        <input id="password" name="password" type="password" minlength="8"
+        <input id="password" name="password" type="password" minlength="12" maxlength="128"
                placeholder="8자 이상 입력" required>
       </div>
       <div class="field">
         <label for="password_confirm">비밀번호 확인</label>
-        <input id="password_confirm" name="password_confirm" type="password" minlength="8"
+        <input id="password_confirm" name="password_confirm" type="password" minlength="12" maxlength="128"
                placeholder="비밀번호를 한 번 더 입력" required>
       </div>
       <button class="button button-full" type="submit">계정 만들기</button>

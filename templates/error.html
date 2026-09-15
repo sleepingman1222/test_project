@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+  <section class="empty-state card">
+    <span>{{ status_code }}</span>
+    <h1>{{ page_title }}</h1>
+    <p>{{ message }}</p>
+    <a class="button" href="{{ url_for('index') }}">홈으로 돌아가기</a>
+  </section>
+{% endblock %}

@@ -10,6 +10,7 @@
     </div>
 
     <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field">
         <label for="title">제목</label>
         <input id="title" name="title" type="text" maxlength="100"
@@ -18,7 +19,7 @@
       </div>
       <div class="field">
         <label for="content">내용</label>
-        <textarea id="content" name="content" rows="12"
+        <textarea id="content" name="content" rows="12" maxlength="20000"
                   placeholder="떠오른 생각을 자유롭게 적어보세요." required>{{ request.form.get('content', note['content'] if note else '') }}</textarea>
       </div>
       <div class="form-actions">

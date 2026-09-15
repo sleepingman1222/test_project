@@ -67,6 +67,18 @@ nav {
   align-items: center;
 }
 
+.nav-form {
+  margin: 0;
+}
+
+.nav-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
 .nav-link,
 .text-link {
   color: var(--muted);
