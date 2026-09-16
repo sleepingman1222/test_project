@@ -3,7 +3,7 @@
 {% block title %}홈{% endblock %}
 
 {% block content %}
-  {% if session.get('user_id') %}
+  {% if g.user %}
     <section class="hero card">
       <span class="eyebrow">로그인 완료</span>
       <h1>반가워요, {{ username }}님.</h1>

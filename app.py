@@ -11,6 +11,7 @@ from flask import (
     Flask,
     abort,
     flash,
+    g,
     jsonify,
     redirect,
     render_template,
@@ -186,7 +187,16 @@ app.jinja_env.globals["csrf_token"] = csrf_token
 def protect_from_csrf():
     # Login is the session bootstrap endpoint documented for non-browser clients.
     # JSON API requests are not form submissions and are authenticated separately.
-    if request.endpoint == "login" or request.path.startswith("/api/"):
+    if request.endpoint == "login":
+        if request.method == "POST":
+            origin = request.headers.get("Origin")
+            if origin and origin.rstrip("/") != request.host_url.rstrip("/"):
+                abort(400)
+            if request.headers.get("Sec-Fetch-Site") == "cross-site":
+                abort(400)
+        return None
+
+    if request.path.startswith("/api/"):
         return None
 
     if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
@@ -202,20 +212,33 @@ def protect_from_csrf():
 
 
 @app.before_request
+def load_logged_in_user():
+    g.user = None
+    user_id = session.get("user_id")
+    if user_id is None:
+        return None
+
+    with get_db() as db:
+        g.user = db.execute(
+            """
+            SELECT id, username, is_admin
+            FROM users
+            WHERE id = ?
+            """,
+            (user_id,),
+        ).fetchone()
+
+    if g.user is None:
+        session.clear()
+
+
+@app.before_request
 def require_api_session():
     if not request.path.startswith("/api/"):
         return None
 
-    user_id = session.get("user_id")
-    if user_id is not None:
-        with get_db() as db:
-            user_exists = db.execute(
-                "SELECT 1 FROM users WHERE id = ?", (user_id,)
-            ).fetchone()
-        if user_exists is not None:
-            return None
-
-        session.clear()
+    if g.user is not None:
+        return None
 
     return jsonify(error="authentication required"), 401
 
@@ -272,7 +295,7 @@ def clear_login_failures(key):
 def login_required(view):
     @wraps(view)
     def wrapped_view(*args, **kwargs):
-        if "user_id" not in session:
+        if g.user is None:
             flash("로그인이 필요합니다.")
             return redirect(url_for("login"))
         return view(*args, **kwargs)
@@ -283,19 +306,14 @@ def login_required(view):
 def admin_required(view):
     @wraps(view)
     def wrapped_view(*args, **kwargs):
-        if "user_id" not in session:
+        if g.user is None:
             flash("로그인이 필요합니다.")
             return redirect(url_for("login"))
 
-        with get_db() as db:
-            admin = db.execute(
-                "SELECT is_admin FROM users WHERE id = ?",
-                (session["user_id"],),
-            ).fetchone()
-        if admin is None or not admin["is_admin"]:
+        if not g.user["is_admin"]:
             app.logger.warning(
                 "Admin access denied: user_id=%r remote_addr=%r",
-                session.get("user_id"),
+                g.user["id"],
                 request.remote_addr,
             )
             abort(403)
@@ -312,13 +330,13 @@ def get_owned_note(public_id):
             FROM notes
             WHERE public_id = ? AND user_id = ?
             """,
-            (public_id, session["user_id"]),
+            (public_id, g.user["id"]),
         ).fetchone()
 
     if note is None:
         app.logger.warning(
             "Note access denied or not found: user_id=%r remote_addr=%r",
-            session.get("user_id"),
+            g.user["id"],
             request.remote_addr,
         )
         abort(404)
@@ -341,14 +359,14 @@ def api_error(message, status_code):
 
 @app.route("/")
 def index():
-    if "user_id" in session:
-        return render_template("index.html", username=session["username"])
+    if g.user is not None:
+        return render_template("index.html", username=g.user["username"])
     return render_template("index.html")
 
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
-    if "user_id" in session:
+    if g.user is not None:
         return redirect(url_for("index"))
 
     if request.method == "POST":
@@ -381,7 +399,7 @@ def register():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    if "user_id" in session:
+    if g.user is not None:
         return redirect(url_for("index"))
 
     if request.method == "POST":
@@ -424,8 +442,6 @@ def login():
             clear_login_failures(attempt_key)
             session.clear()
             session["user_id"] = user["id"]
-            session["username"] = user["username"]
-            session["is_admin"] = bool(user["is_admin"])
             session.permanent = not bool(user["is_admin"])
             app.logger.info(
                 "Login succeeded: user_id=%r is_admin=%r remote_addr=%r",
@@ -460,7 +476,7 @@ def note_list():
             WHERE user_id = ?
             ORDER BY updated_at DESC, id DESC
             """,
-            (session["user_id"],),
+            (g.user["id"],),
         ).fetchall()
     return render_template("notes.html", notes=notes)
 
@@ -486,7 +502,7 @@ def note_create():
                     INSERT INTO notes (public_id, user_id, title, content)
                     VALUES (?, ?, ?, ?)
                     """,
-                    (public_id, session["user_id"], title, content),
+                    (public_id, g.user["id"], title, content),
                 )
             flash("메모를 저장했습니다.")
             return redirect(url_for("note_detail", public_id=public_id))
@@ -523,7 +539,7 @@ def note_edit(public_id):
                     SET title = ?, content = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE public_id = ? AND user_id = ?
                     """,
-                    (title, content, public_id, session["user_id"]),
+                    (title, content, public_id, g.user["id"]),
                 )
             flash("메모를 수정했습니다.")
             return redirect(url_for("note_detail", public_id=public_id))
@@ -538,7 +554,7 @@ def note_delete(public_id):
     with get_db() as db:
         db.execute(
             "DELETE FROM notes WHERE public_id = ? AND user_id = ?",
-            (public_id, session["user_id"]),
+            (public_id, g.user["id"]),
         )
     flash("메모를 삭제했습니다.")
     return redirect(url_for("note_list"))
@@ -554,7 +570,7 @@ def api_note_list():
             WHERE user_id = ?
             ORDER BY updated_at DESC, id DESC
             """,
-            (session["user_id"],),
+            (g.user["id"],),
         ).fetchall()
 
     return jsonify(notes=[note_to_api_dict(note) for note in notes])
@@ -583,7 +599,7 @@ def api_note_create():
             INSERT INTO notes (public_id, user_id, title, content)
             VALUES (?, ?, ?, ?)
             """,
-            (secrets.token_urlsafe(18), session["user_id"], title.strip(), body),
+            (secrets.token_urlsafe(18), g.user["id"], title.strip(), body),
         )
         note = db.execute(
             """
@@ -591,7 +607,7 @@ def api_note_create():
             FROM notes
             WHERE id = ? AND user_id = ?
             """,
-            (cursor.lastrowid, session["user_id"]),
+            (cursor.lastrowid, g.user["id"]),
         ).fetchone()
 
     return jsonify(note_to_api_dict(note)), 201
@@ -606,7 +622,7 @@ def api_note_detail(note_id):
             FROM notes
             WHERE id = ? AND user_id = ?
             """,
-            (note_id, session["user_id"]),
+            (note_id, g.user["id"]),
         ).fetchone()
 
     if note is None:
@@ -630,7 +646,7 @@ def admin_users():
         ).fetchall()
     app.logger.info(
         "Admin member list viewed: user_id=%r remote_addr=%r",
-        session["user_id"],
+        g.user["id"],
         request.remote_addr,
     )
     return render_template("admin.html", users=users)
