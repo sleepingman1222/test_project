@@ -11,6 +11,7 @@ from flask import (
     Flask,
     abort,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -183,6 +184,11 @@ app.jinja_env.globals["csrf_token"] = csrf_token
 
 @app.before_request
 def protect_from_csrf():
+    # Login is the session bootstrap endpoint documented for non-browser clients.
+    # JSON API requests are not form submissions and are authenticated separately.
+    if request.endpoint == "login" or request.path.startswith("/api/"):
+        return None
+
     if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
         expected = session.get("_csrf_token")
         supplied = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token")
@@ -193,6 +199,25 @@ def protect_from_csrf():
                 request.remote_addr,
             )
             abort(400)
+
+
+@app.before_request
+def require_api_session():
+    if not request.path.startswith("/api/"):
+        return None
+
+    user_id = session.get("user_id")
+    if user_id is not None:
+        with get_db() as db:
+            user_exists = db.execute(
+                "SELECT 1 FROM users WHERE id = ?", (user_id,)
+            ).fetchone()
+        if user_exists is not None:
+            return None
+
+        session.clear()
+
+    return jsonify(error="authentication required"), 401
 
 
 @app.after_request
@@ -298,6 +323,20 @@ def get_owned_note(public_id):
         )
         abort(404)
     return note
+
+
+def note_to_api_dict(note):
+    return {
+        "id": note["id"],
+        "title": note["title"],
+        "body": note["content"],
+        "created_at": note["created_at"],
+        "updated_at": note["updated_at"],
+    }
+
+
+def api_error(message, status_code):
+    return jsonify(error=message), status_code
 
 
 @app.route("/")
@@ -505,6 +544,76 @@ def note_delete(public_id):
     return redirect(url_for("note_list"))
 
 
+@app.route("/api/notes", methods=["GET"])
+def api_note_list():
+    with get_db() as db:
+        notes = db.execute(
+            """
+            SELECT id, title, content, created_at, updated_at
+            FROM notes
+            WHERE user_id = ?
+            ORDER BY updated_at DESC, id DESC
+            """,
+            (session["user_id"],),
+        ).fetchall()
+
+    return jsonify(notes=[note_to_api_dict(note) for note in notes])
+
+
+@app.route("/api/notes", methods=["POST"])
+def api_note_create():
+    if not request.is_json:
+        return api_error("request body must be JSON", 400)
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return api_error("request body must be a JSON object", 400)
+
+    title = payload.get("title")
+    if not isinstance(title, str) or not title.strip():
+        return api_error("title is required", 400)
+
+    body = payload.get("body", "")
+    if not isinstance(body, str):
+        return api_error("body must be a string", 400)
+
+    with get_db() as db:
+        cursor = db.execute(
+            """
+            INSERT INTO notes (public_id, user_id, title, content)
+            VALUES (?, ?, ?, ?)
+            """,
+            (secrets.token_urlsafe(18), session["user_id"], title.strip(), body),
+        )
+        note = db.execute(
+            """
+            SELECT id, title, content, created_at, updated_at
+            FROM notes
+            WHERE id = ? AND user_id = ?
+            """,
+            (cursor.lastrowid, session["user_id"]),
+        ).fetchone()
+
+    return jsonify(note_to_api_dict(note)), 201
+
+
+@app.route("/api/notes/<int:note_id>", methods=["GET"])
+def api_note_detail(note_id):
+    with get_db() as db:
+        note = db.execute(
+            """
+            SELECT id, title, content, created_at, updated_at
+            FROM notes
+            WHERE id = ? AND user_id = ?
+            """,
+            (note_id, session["user_id"]),
+        ).fetchone()
+
+    if note is None:
+        return api_error("note not found", 404)
+    return jsonify(note_to_api_dict(note))
+
+
 @app.route("/admin")
 @admin_required
 def admin_users():
@@ -528,14 +637,19 @@ def admin_users():
 
 
 @app.errorhandler(400)
+@app.errorhandler(401)
 @app.errorhandler(403)
 @app.errorhandler(404)
 @app.errorhandler(405)
 @app.errorhandler(413)
 @app.errorhandler(429)
 def handle_http_error(error):
+    if request.path.startswith("/api/"):
+        return api_error(error.name.lower(), error.code)
+
     messages = {
         400: ("잘못된 요청", "요청을 확인한 뒤 다시 시도해 주세요."),
+        401: ("로그인 필요", "로그인한 뒤 다시 시도해 주세요."),
         403: ("접근 권한 없음", "이 페이지에 접근할 권한이 없습니다."),
         404: ("페이지를 찾을 수 없음", "요청한 페이지가 없거나 접근할 수 없습니다."),
         405: ("허용되지 않은 요청", "이 주소에서는 사용할 수 없는 요청 방식입니다."),
